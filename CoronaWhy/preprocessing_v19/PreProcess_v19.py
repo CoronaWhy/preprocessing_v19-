@@ -5,6 +5,7 @@ from Pipeline_v19 import pipeline
 from pathos.pools import ProcessPool
 from pathos.helpers import cpu_count
 from psutil import virtual_memory
+import pandas as pd
 
 
 
@@ -53,8 +54,26 @@ def main():
             delta_sha_list = delta_file["delta list"]
             delta_sha_list = ''.join(delta_sha_list)
     
-    # Preprocess the metadata to get folder and subfolder structre and the names of files
-    files, paths_to_files = preprocess_metadata(args.CORD19_path)
+    # # Preprocess the metadata to get folder and subfolder structre and the names of files
+    # files, paths_to_files = preprocess_metadata(args.CORD19_path)
+
+############## Insted doing v15+ paths to files directly
+    directory = args.CORD19_path
+    df = pd.read_csv(os.path.join(directory,"metadata.csv"), low_memory=False) 
+    paths_to_files = []
+    
+    #drop rows that don't contain full text jsons
+    df.dropna(subset=['pmc_json_files','pdf_json_files'], how='all', inplace=True)
+
+    df_pmc_only = df['pmc_json_files'].dropna()
+    for row in df_pmc_only:
+        paths_to_files.append( os.path.join(directory,row.split(';')[0]) )
+
+    df_pdf_only = df[df['pmc_json_files'].isna()]['pdf_json_files'].dropna()
+    for row in df_pdf_only:
+        paths_to_files.append( os.path.join(directory,row.split(';')[0]) )
+
+
     #files, paths_to_files = files[:100], paths_to_files[:100]
     if delta_sha_list:
         old_doc_nubmer = len(files)
@@ -91,7 +110,7 @@ def main():
     ram_size_gib= mem.free/1024**3 #or mem.total
     
     n_cpus_realistic = int(ram_size_gib/args.RAM_per_worker)
-    cpu_number = min(cpu_n,n_cpus_realistic)
+    cpu_number = max( 1, min(cpu_n,n_cpus_realistic) ) #so at least 1 cpu is used
     pool = ProcessPool(nodes=cpu_number)
     paths_chunks = chunking(paths_to_files_sorted,cpu_number)
     
